@@ -221,9 +221,10 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
           <label class="choice"><input type="radio" name="motion" id="mAuto" value="auto" checked><span>Automatic</span></label>
           <label class="choice"><input type="radio" name="motion" id="mStatic" value="static"><span>Steady</span></label>
           <label class="choice"><input type="radio" name="motion" id="mScroll" value="scroll"><span>Scrolling</span></label>
+          <label class="choice"><input type="radio" name="motion" id="mWords" value="words"><span>Word by word</span></label>
           <label class="choice"><input type="radio" name="motion" id="mFlash" value="flash"><span>Flashing</span></label>
         </div>
-        <p class="hint">Automatic keeps short text steady and scrolls text that is too wide for the sign.</p>
+        <p class="hint">Automatic keeps text steady if it fits. Longer text shows one word at a time, and scrolls only if a single word is too wide.</p>
       </fieldset>
       <div class="field">
         <label for="speed">Scrolling speed</label>
@@ -296,7 +297,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.8.0</p>
+      <p class="hint">Version 1.9.0</p>
     </div>
   </details>
 
@@ -409,12 +410,15 @@ const Proto = (() => {
     return [0, 0, 0, 0, 0, 0, 0, nonce, 2, 0, ...colourItem(glyphs, o), ...textItem(glyphs, o)];
   }
 
-  /* px[x][y] = [r,g,b] or null. Column-major RGB444, one frame. */
+  /* frames: [{px, delay}], px[x][y] = [r,g,b] or null. Column-major RGB444; delay in ms per frame. */
   const q2 = v => v >= 238 ? 15 : v <= 47 ? 0 : Math.min(15, Math.floor((v - 47) / 14) + 1);
-  function pictureProgram(px, w, h, delay = 60000, nonce = Math.floor(Math.random() * 256)) {
-    const pixels = [];
-    for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) { const c = (px[x] && px[x][y]) || [0, 0, 0]; pixels.push(q2(c[0]), (q2(c[1]) << 4) | q2(c[2])); }
-    const inner = [0x03, 0x01, 0, 0, 0, 0, 0, 0, 0, ...u16(0), ...u16(0), ...u16(w), ...u16(h), 0, ...u16(1), ...u16(delay), ...pixels];
+  function pictureProgram(frames, w, h, nonce = Math.floor(Math.random() * 256)) {
+    const pixels = [], delays = [];
+    for (const f of frames) {
+      delays.push(...u16(Math.max(20, Math.min(65535, f.delay))));
+      for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) { const c = (f.px[x] && f.px[x][y]) || [0, 0, 0]; pixels.push(q2(c[0]), (q2(c[1]) << 4) | q2(c[2])); }
+    }
+    const inner = [0x03, 0x01, 0, 0, 0, 0, 0, 0, 0, ...u16(0), ...u16(0), ...u16(w), ...u16(h), 0, ...u16(frames.length), ...delays, ...pixels];
     return [0, 0, 0, 0, 0, 0, 0, nonce, 1, 0, ...withLen(inner)];
   }
   const startPacket = (prog, index = 0, count = 1, show = 1) => [0x02, ...u32(crc32(prog)), ...u32(prog.length), index, count, show];
@@ -555,7 +559,39 @@ if (typeof module !== "undefined") module.exports = Proto;
     sign.forEach((col, x) => col.forEach((c, y) => { if (c) px[sx + x][top + y] = c; }));
     return { picture: px, motion: "static", w, h };
   }
-  function programFor(lay) { return lay.picture ? Proto.pictureProgram(lay.picture, lay.w, lay.h) : Proto.textProgram(lay.glyphs, lay.opts); }
+  function programFor(lay) {
+    if (lay.frames) return Proto.pictureProgram(lay.frames, lay.w, lay.h);
+    if (lay.picture) return Proto.pictureProgram([{ px: lay.picture, delay: 60000 }], lay.w, lay.h);
+    return Proto.textProgram(lay.glyphs, lay.opts);
+  }
+  /* Word by word: each word held steady, all at the largest size where every word fits; a stop sign joins the last word if it fits. */
+  const glyphsToPx = glyphs => {
+    const px = glyphs.flatMap(g => g.emoji || g.cols.map(col => col.map(on => on ? g.colour : null)));
+    while (px.length && !px[px.length - 1].some(Boolean)) px.pop();
+    while (px.length && !px[0].some(Boolean)) px.shift();
+    return px;
+  };
+  function wordsLayout(text) {
+    const { w, h } = panel();
+    const colour = COLOURS.find(c => c.id === val("colour")).rgb;
+    const tokens = text.split(/\s+/).filter(Boolean);
+    const plain = tokens.filter(t => t !== SIGN), hasSign = tokens.includes(SIGN);
+    if (!plain.length || plain.length + (hasSign ? 1 : 0) < 2) return null;
+    const plans = hasSign ? [[...plain.slice(0, -1), plain[plain.length - 1] + SIGN], [...plain, SIGN]] : [plain];
+    for (const plan of plans) for (const size of ["large", "medium", "small"]) {
+      const cols = plan.map(word => glyphsToPx(renderGlyphs(word, colour, size)));
+      if (cols.some(c => c.length > w)) continue;
+      const frames = cols.map((c, i) => {
+        const px = Array.from({ length: w }, () => new Array(h).fill(null)), left = Math.floor((w - c.length) / 2);
+        c.forEach((col, x) => { px[left + x] = col.slice(); });
+        const letters = plan[i].replace(SIGN, "").length;
+        return { px, delay: Math.min(2200, 900 + 110 * letters + (plan[i].includes(SIGN) ? 300 : 0)) };
+      });
+      frames.push({ px: Array.from({ length: w }, () => new Array(h).fill(null)), delay: 350 }); // short gap before it repeats
+      return { frames, motion: "words", w, h };
+    }
+    return null;
+  }
   function handColour(textColour) { return textColour[0] === 255 && textColour[1] === 0 ? [255, 255, 255] : [255, 0, 0]; }
   function renderGlyphs(text, colour, size = val("size")) {
     const { h } = panel();
@@ -614,6 +650,7 @@ if (typeof module !== "undefined") module.exports = Proto;
   }
 
   function layoutFor(text) {
+    if (val("motion") === "words") { const wl = wordsLayout(text); if (wl) return wl; }
     /* A steady stop-sign message goes as one picture; anything that scrolls carries the sign as a colour character. */
     if (text.includes(SIGN) && val("motion") !== "scroll") {
       const pic = pictureLayout(text);
@@ -630,7 +667,8 @@ if (typeof module !== "undefined") module.exports = Proto;
       const sw = smaller.reduce((a, g) => a + g.cols.length, 0);
       if (sw <= w) { glyphs = smaller; width = sw; }
     }
-    if (motion === "auto") motion = width > w ? "scroll" : "static";
+    if (motion === "auto" && width > w) { const wl = wordsLayout(text); if (wl) return wl; }
+    if (motion === "auto" || motion === "words") motion = width > w ? "scroll" : "static";
     if (motion !== "scroll" && width < w) {
       const pad = Math.floor((w - width) / 2);
       if (pad > 0) glyphs = [{ cols: Array.from({ length: pad }, () => new Array(h).fill(0)), colour }, ...glyphs];
@@ -647,10 +685,16 @@ if (typeof module !== "undefined") module.exports = Proto;
     cv.width = w * 20; cv.height = h * 20;
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--led-bg").trim() || "#050608";
     ctx.fillRect(0, 0, cv.width, cv.height);
-    const strip = previewState ? previewState.px : [];
-    const scroll = previewState && previewState.motion === "scroll";
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const t = performance.now();
+    let strip = previewState ? previewState.px : [];
+    const words = previewState && previewState.frames;
+    if (words) {
+      const total = words.reduce((a, f) => a + f.delay, 0); let at = reduce ? 0 : t % total, i = 0;
+      while (i < words.length - 1 && at >= words[i].delay) { at -= words[i].delay; i++; }
+      strip = words[i].px;
+    }
+    const scroll = previewState && previewState.motion === "scroll";
     const cycle = strip.length + w;
     const offset = scroll && !reduce ? Math.floor(t / SPEED_MS[speedLevel() - 1]) % cycle - w : 0;
     const flashOff = previewState && previewState.motion === "flash" && !reduce && Math.floor(t / 500) % 2;
@@ -659,15 +703,15 @@ if (typeof module !== "undefined") module.exports = Proto;
       ctx.fillStyle = c ? `rgb(${c.join(",")})` : "rgba(255,255,255,0.07)";
       ctx.beginPath(); ctx.arc(x * 20 + 10, y * 20 + 10, 7.5, 0, Math.PI * 2); ctx.fill();
     }
-    if ((scroll || (previewState && previewState.motion === "flash")) && !reduce) previewRaf = requestAnimationFrame(drawPreview);
+    if ((scroll || words || (previewState && previewState.motion === "flash")) && !reduce) previewRaf = requestAnimationFrame(drawPreview);
   }
   function showPreview(text, lay) {
     cancelAnimationFrame(previewRaf);
     if (!text) { previewState = null; $("previewText").textContent = "Sign preview: blank"; drawPreview(); return; }
     const cname = COLOURS.find(c => c.id === val("colour")).name;
-    const px = lay.picture || lay.glyphs.flatMap(g => g.emoji || g.cols.map(col => col.map(on => on ? g.colour : null)));
-    previewState = { px, motion: lay.motion };
-    const how = { scroll: "scrolling", static: "steady", flash: "flashing" }[lay.motion];
+    const px = lay.frames ? [] : lay.picture || lay.glyphs.flatMap(g => g.emoji || g.cols.map(col => col.map(on => on ? g.colour : null)));
+    previewState = { px, frames: lay.frames || null, motion: lay.motion };
+    const how = { scroll: "scrolling", static: "steady", flash: "flashing", words: "word by word" }[lay.motion];
     $("previewText").textContent = `Sign shows: ${text.replace(HAND, "with hand symbol").replace(SIGN, "with stop sign")} — ${cname.toLowerCase()}, ${how}`;
     drawPreview();
   }
