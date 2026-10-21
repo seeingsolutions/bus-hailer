@@ -299,7 +299,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.5.0</p>
+      <p class="hint">Version 1.6.0</p>
     </div>
   </details>
 
@@ -520,23 +520,25 @@ if (typeof module !== "undefined") module.exports = Proto;
     "..#####...",
     "..#####..."
   ];
-  /* Stop sign: 16 by 16 red octagon with white STOP in a 3 by 5 LED font. */
-  const SIGN = "\u{1F6D1}";
-  const STOP_FONT = { S: ["###", "#..", "###", "..#", "###"], T: ["###", ".#.", ".#.", ".#.", ".#."], O: ["###", "#.#", "#.#", "#.#", "###"], P: ["###", "#.#", "###", "#..", "#.."] };
+  /* Stop sign: 12 by 12 red octagon with a white bar across the middle, like the stop sign emoji. */
+  const SIGN = "\u{1F6D1}", SIGN_SIZE = 12;
   function stopSign() {
-    const RED = [255, 0, 0], WHITE = [255, 255, 255], px = [];
-    for (let x = 0; x < 16; x++) { px.push([]); for (let y = 0; y < 16; y++) { const inset = Math.max(0, 5 - y, y - 10); px[x].push(x >= inset && x <= 15 - inset ? RED : null); } }
-    let cx = 1;
-    for (const ch of "STOP") { const rows = STOP_FONT[ch]; rows.forEach((row, y) => [...row].forEach((c, x) => { if (c === "#") px[cx + x][5 + y] = WHITE; })); cx += 4; }
+    const RED = [255, 0, 0], WHITE = [255, 255, 255], n = SIGN_SIZE, cut = 3, px = [];
+    for (let x = 0; x < n; x++) { px.push([]); for (let y = 0; y < n; y++) {
+      const inset = Math.max(0, cut - y, y - (n - 1 - cut));
+      const inside = x >= inset && x <= n - 1 - inset;
+      const bar = (y === 5 || y === 6) && x >= 2 && x <= n - 3;
+      px[x].push(inside ? (bar ? WHITE : RED) : null);
+    } }
     return px;
   }
   /* Number on the left, stop sign on the right, as one steady full-colour picture. Returns null if it can't fit. */
   function pictureLayout(text) {
     const { w, h } = panel();
-    if (h < 16) return null;
+    if (h < SIGN_SIZE) return null;
     const colour = COLOURS.find(c => c.id === val("colour")).rgb;
     const words = text.replace(SIGN, "").trim();
-    const room = w - 16 - 1;
+    const room = w - SIGN_SIZE - 1;
     let cols = null;
     for (const size of ["large", "medium", "small"]) {
       const g = renderGlyphs(words, colour, size), c = g.flatMap(x => x.cols);
@@ -544,9 +546,9 @@ if (typeof module !== "undefined") module.exports = Proto;
     }
     if (!cols) return null;
     const px = Array.from({ length: w }, () => new Array(h).fill(null));
-    const used = cols.length + 1 + 16, left = Math.floor((w - used) / 2);
+    const used = cols.length + 1 + SIGN_SIZE, left = Math.floor((w - used) / 2);
     cols.forEach((col, x) => col.forEach((on, y) => { if (on) px[left + x][y] = colour; }));
-    const sign = stopSign(), top = Math.floor((h - 16) / 2), sx = left + cols.length + 1;
+    const sign = stopSign(), top = Math.floor((h - SIGN_SIZE) / 2), sx = left + cols.length + 1;
     sign.forEach((col, x) => col.forEach((c, y) => { if (c) px[sx + x][top + y] = c; }));
     return { picture: px, motion: "static", w, h };
   }
