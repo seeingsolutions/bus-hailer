@@ -225,14 +225,11 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
         </div>
         <p class="hint">Automatic keeps short text steady and scrolls text that is too wide for the sign.</p>
       </fieldset>
-      <fieldset>
-        <legend>Scrolling speed</legend>
-        <div class="choices">
-          <label class="choice"><input type="radio" name="speed" id="sSlow" value="slow"><span>Slow</span></label>
-          <label class="choice"><input type="radio" name="speed" id="sNormal" value="normal" checked><span>Normal</span></label>
-          <label class="choice"><input type="radio" name="speed" id="sFast" value="fast"><span>Fast</span></label>
-        </div>
-      </fieldset>
+      <div class="field">
+        <label for="speed">Scrolling speed</label>
+        <input id="speed" type="range" min="1" max="10" step="1" value="7">
+        <p class="hint">Applies the next time you send. 5 was the old Normal and 10 was Fast.</p>
+      </div>
       <label class="check"><input type="checkbox" id="wake" checked> Keep this screen awake while connected</label>
     </div>
   </section>
@@ -299,7 +296,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.7.0</p>
+      <p class="hint">Version 1.8.0</p>
     </div>
   </details>
 
@@ -477,11 +474,14 @@ if (typeof module !== "undefined") module.exports = Proto;
     { id: "cyan", name: "Light blue", rgb: [0, 255, 255] },
     { id: "red", name: "Red", rgb: [255, 0, 0] }
   ];
-  const SPEEDS = { slow: 180, normal: 220, fast: 250 };
+  /* Slider level 1-10 to the sign's speed byte, and the matching preview pace in milliseconds per LED column. */
+  const SPEED_WIRE = [180, 195, 205, 212, 220, 225, 230, 235, 242, 250];
+  const SPEED_MS = [170, 140, 115, 95, 80, 70, 60, 50, 40, 30];
+  const speedLevel = () => Math.min(10, Math.max(1, parseInt($("speed").value, 10) || 7));
   $("colours").innerHTML = COLOURS.map(c =>
     `<label class="choice"><input type="radio" name="colour" id="c_${c.id}" value="${c.id}"><span><span class="swatch" aria-hidden="true" style="background:rgb(${c.rgb.join(",")})"></span>${c.name}</span></label>`).join("");
 
-  const radios = ["wording", "colour", "motion", "speed", "size", "layout", "stay", "sendMode"];
+  const radios = ["wording", "colour", "motion", "size", "layout", "stay", "sendMode"];
   const defaults = { wording: "number", colour: "amber", motion: "auto", speed: "normal", size: "large", layout: "0", stay: "255", sendMode: "only" };
   for (const r of radios) {
     const v = store.get(r, defaults[r]);
@@ -636,7 +636,7 @@ if (typeof module !== "undefined") module.exports = Proto;
       if (pad > 0) glyphs = [{ cols: Array.from({ length: pad }, () => new Array(h).fill(0)), colour }, ...glyphs];
     }
     const mode = motion === "scroll" ? 2 : motion === "flash" ? 8 : 1;
-    return { glyphs, width, motion, opts: { w, h, mode, speed: SPEEDS[val("speed")], stay: parseInt(val("stay"), 10), moveSpace: w, layout: parseInt(val("layout"), 10) } };
+    return { glyphs, width, motion, opts: { w, h, mode, speed: SPEED_WIRE[speedLevel() - 1], stay: parseInt(val("stay"), 10), moveSpace: w, layout: parseInt(val("layout"), 10) } };
   }
 
   /* ---------- preview ---------- */
@@ -652,7 +652,7 @@ if (typeof module !== "undefined") module.exports = Proto;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const t = performance.now();
     const cycle = strip.length + w;
-    const offset = scroll && !reduce ? Math.floor(t / 80) % cycle - w : 0;
+    const offset = scroll && !reduce ? Math.floor(t / SPEED_MS[speedLevel() - 1]) % cycle - w : 0;
     const flashOff = previewState && previewState.motion === "flash" && !reduce && Math.floor(t / 500) % 2;
     for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) {
       const sx = x + offset; const c = !flashOff && sx >= 0 && sx < strip.length ? strip[sx][y] : null;
@@ -877,6 +877,11 @@ if (typeof module !== "undefined") module.exports = Proto;
       say(on ? "Display turned on" : "Display turned off"); }
     catch (err) { log(err.message); say("Couldn't change the display.", true); }
   };
+  const sp = $("speed");
+  const spText = () => `Speed ${sp.value} of 10`;
+  try { const v = store.get("speedLevel", 7); sp.value = v; } catch {}
+  sp.setAttribute("aria-valuetext", spText());
+  sp.addEventListener("input", () => { sp.setAttribute("aria-valuetext", spText()); store.set("speedLevel", sp.value); refreshPreview(); });
   const br = $("brightness");
   const brText = () => `Brightness ${Math.round(br.value / 255 * 100)} percent`;
   br.value = store.get("brightness", 255); br.setAttribute("aria-valuetext", brText());
