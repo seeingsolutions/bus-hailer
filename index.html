@@ -299,7 +299,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.6.0</p>
+      <p class="hint">Version 1.7.0</p>
     </div>
   </details>
 
@@ -402,7 +402,10 @@ const Proto = (() => {
     const sum = glyphs.reduce((a, g) => a + g.cols.length, 0);
     const body = [0x01, 0, 0, 0, 0, 0, 0, 0, 1, ...u16(0), ...u16(0), ...u16(o.w), ...u16(o.h),
       o.mode, o.speed, o.stay, ...u16(o.moveSpace), ...u16(glyphs.length), ...u32(sum)];
-    for (const g of glyphs) body.push(g.cols.length, 0, ...packColumns(g.cols, o.h, o.layout));
+    for (const g of glyphs) {
+      if (g.emoji) { body.push(g.cols.length, 1); for (const col of g.emoji) for (let y = 0; y < o.h; y++) body.push(...rgb444(col[y] || [0, 0, 0])); }
+      else body.push(g.cols.length, 0, ...packColumns(g.cols, o.h, o.layout));
+    }
     return withLen(body);
   }
   function textProgram(glyphs, o, nonce = Math.floor(Math.random() * 256)) {
@@ -567,6 +570,13 @@ if (typeof module !== "undefined") module.exports = Proto;
     const glyphs = [];
     for (const ch of Array.from(text)) {
       if (ch === " ") { glyphs.push({ cols: Array.from({ length: spaceW }, blank), colour }); continue; }
+      if (ch === SIGN) {
+        const sign = stopSign(), off = Math.max(0, Math.floor((h - SIGN_SIZE) / 2));
+        const emoji = sign.map(col => { const c = new Array(h).fill(null); col.forEach((v, y) => { if (y + off < h) c[y + off] = v; }); return c; });
+        emoji.push(new Array(h).fill(null)); // one dark column after the sign
+        glyphs.push({ cols: emoji.map(col => col.map(Boolean)), emoji, colour: [255, 255, 255] });
+        continue;
+      }
       if (ch === HAND) {
         const off = Math.max(0, Math.floor((h - HAND_ROWS.length) / 2));
         const cols = [];
@@ -604,11 +614,10 @@ if (typeof module !== "undefined") module.exports = Proto;
   }
 
   function layoutFor(text) {
-    if (text.includes(SIGN)) {
+    /* A steady stop-sign message goes as one picture; anything that scrolls carries the sign as a colour character. */
+    if (text.includes(SIGN) && val("motion") !== "scroll") {
       const pic = pictureLayout(text);
       if (pic) return pic;
-      log("Too wide for the stop sign, sending STOP as text instead");
-      text = text.replace(SIGN, "STOP");
     }
     const { w, h } = panel();
     const colour = COLOURS.find(c => c.id === val("colour")).rgb;
@@ -656,7 +665,7 @@ if (typeof module !== "undefined") module.exports = Proto;
     cancelAnimationFrame(previewRaf);
     if (!text) { previewState = null; $("previewText").textContent = "Sign preview: blank"; drawPreview(); return; }
     const cname = COLOURS.find(c => c.id === val("colour")).name;
-    const px = lay.picture || lay.glyphs.flatMap(g => g.cols.map(col => col.map(on => on ? g.colour : null)));
+    const px = lay.picture || lay.glyphs.flatMap(g => g.emoji || g.cols.map(col => col.map(on => on ? g.colour : null)));
     previewState = { px, motion: lay.motion };
     const how = { scroll: "scrolling", static: "steady", flash: "flashing" }[lay.motion];
     $("previewText").textContent = `Sign shows: ${text.replace(HAND, "with hand symbol").replace(SIGN, "with stop sign")} — ${cname.toLowerCase()}, ${how}`;
