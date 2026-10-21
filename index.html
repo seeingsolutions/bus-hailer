@@ -297,7 +297,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.9.0</p>
+      <p class="hint">Version 1.9.1</p>
     </div>
   </details>
 
@@ -578,8 +578,10 @@ if (typeof module !== "undefined") module.exports = Proto;
     const plain = tokens.filter(t => t !== SIGN), hasSign = tokens.includes(SIGN);
     if (!plain.length || plain.length + (hasSign ? 1 : 0) < 2) return null;
     const plans = hasSign ? [[...plain.slice(0, -1), plain[plain.length - 1] + SIGN], [...plain, SIGN]] : [plain];
-    for (const plan of plans) for (const size of ["large", "medium", "small"]) {
-      const cols = plan.map(word => glyphsToPx(renderGlyphs(word, colour, size)));
+    const tries = [];
+    for (let rows = h - 2; rows >= 7; rows--) for (const sq of [1, 0.9, 0.8, 0.7, 0.62, 0.55]) tries.push([rows, sq]);
+    for (const plan of plans) for (const [rows, sq] of tries) {
+      const cols = plan.map(word => glyphsToPx(renderGlyphs(word, colour, rows, sq)));
       if (cols.some(c => c.length > w)) continue;
       const frames = cols.map((c, i) => {
         const px = Array.from({ length: w }, () => new Array(h).fill(null)), left = Math.floor((w - c.length) / 2);
@@ -593,9 +595,10 @@ if (typeof module !== "undefined") module.exports = Proto;
     return null;
   }
   function handColour(textColour) { return textColour[0] === 255 && textColour[1] === 0 ? [255, 255, 255] : [255, 0, 0]; }
-  function renderGlyphs(text, colour, size = val("size")) {
+  /* size: "large", "medium", "small" or a number of LED rows for capital letters. squeeze below 1 narrows the letters. */
+  function renderGlyphs(text, colour, size = val("size"), squeeze = 1) {
     const { h } = panel();
-    const capRows = size === "large" ? h - 2 : size === "small" ? Math.round(h * 0.5) : Math.round(h * 0.68);
+    const capRows = typeof size === "number" ? size : size === "large" ? h - 2 : size === "small" ? Math.round(h * 0.5) : Math.round(h * 0.68);
     const top = Math.floor((h - capRows) / 2);
     const c = document.createElement("canvas"); const ctx = c.getContext("2d", { willReadFrequently: true });
     ctx.font = `700 100px ${FONT}`;
@@ -624,10 +627,12 @@ if (typeof module !== "undefined") module.exports = Proto;
         continue;
       }
       ctx.font = `700 ${px}px ${FONT}`;
-      const w = Math.ceil(ctx.measureText(ch).width / S) + 3;
+      const w = Math.ceil(ctx.measureText(ch).width * squeeze / S) + 3;
       c.width = w * S; c.height = h * S;
       ctx.font = `700 ${px}px ${FONT}`; ctx.fillStyle = "#fff"; ctx.textBaseline = "alphabetic";
-      ctx.fillText(ch, S, (top + capRows) * S);
+      ctx.setTransform(squeeze, 0, 0, 1, 0, 0);
+      ctx.fillText(ch, S / squeeze, (top + capRows) * S);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       const img = ctx.getImageData(0, 0, c.width, c.height).data;
       let cols = [];
       for (let x = 0; x < w; x++) {
@@ -650,7 +655,6 @@ if (typeof module !== "undefined") module.exports = Proto;
   }
 
   function layoutFor(text) {
-    if (val("motion") === "words") { const wl = wordsLayout(text); if (wl) return wl; }
     /* A steady stop-sign message goes as one picture; anything that scrolls carries the sign as a colour character. */
     if (text.includes(SIGN) && val("motion") !== "scroll") {
       const pic = pictureLayout(text);
@@ -662,12 +666,12 @@ if (typeof module !== "undefined") module.exports = Proto;
     let width = glyphs.reduce((a, g) => a + g.cols.length, 0);
     let motion = val("motion");
     /* In Automatic, shrink letters rather than scroll when medium size fits, because steady messages hold on the sign. */
-    if (motion === "auto" && width > w && val("size") === "large") {
+    if ((motion === "auto" || motion === "words") && width > w && val("size") === "large") {
       const smaller = renderGlyphs(text, colour, "medium");
       const sw = smaller.reduce((a, g) => a + g.cols.length, 0);
       if (sw <= w) { glyphs = smaller; width = sw; }
     }
-    if (motion === "auto" && width > w) { const wl = wordsLayout(text); if (wl) return wl; }
+    if ((motion === "auto" || motion === "words") && width > w) { const wl = wordsLayout(text); if (wl) return wl; }
     if (motion === "auto" || motion === "words") motion = width > w ? "scroll" : "static";
     if (motion !== "scroll" && width < w) {
       const pad = Math.floor((w - width) / 2);
@@ -690,7 +694,7 @@ if (typeof module !== "undefined") module.exports = Proto;
     let strip = previewState ? previewState.px : [];
     const words = previewState && previewState.frames;
     if (words) {
-      const total = words.reduce((a, f) => a + f.delay, 0); let at = reduce ? 0 : t % total, i = 0;
+      const total = words.reduce((a, f) => a + f.delay, 0); let at = reduce ? 0 : (t - previewState.start) % total, i = 0;
       while (i < words.length - 1 && at >= words[i].delay) { at -= words[i].delay; i++; }
       strip = words[i].px;
     }
@@ -710,7 +714,7 @@ if (typeof module !== "undefined") module.exports = Proto;
     if (!text) { previewState = null; $("previewText").textContent = "Sign preview: blank"; drawPreview(); return; }
     const cname = COLOURS.find(c => c.id === val("colour")).name;
     const px = lay.frames ? [] : lay.picture || lay.glyphs.flatMap(g => g.emoji || g.cols.map(col => col.map(on => on ? g.colour : null)));
-    previewState = { px, frames: lay.frames || null, motion: lay.motion };
+    previewState = { px, frames: lay.frames || null, motion: lay.motion, start: performance.now() };
     const how = { scroll: "scrolling", static: "steady", flash: "flashing", words: "word by word" }[lay.motion];
     $("previewText").textContent = `Sign shows: ${text.replace(HAND, "with hand symbol").replace(SIGN, "with stop sign")} — ${cname.toLowerCase()}, ${how}`;
     drawPreview();
