@@ -286,7 +286,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.14.1</p>
+      <p class="hint">Version 1.14.2</p>
     </div>
   </details>
 
@@ -895,13 +895,15 @@ if (typeof module !== "undefined") module.exports = Proto;
   }
 
   /* Writes a whole preset set in order. The sign starts a fresh set whenever preset 1 is written (tested), so sets always go out complete.
-     The last start byte is how many times a preset plays before the sign moves on (tested); 0 should mean repeat forever. */
+     The last start byte is how many times a preset plays before the sign moves on (tested). Moving presets get 0, which repeats forever (tested);
+     steady ones get the set size, because 0 makes steady text redraw every couple of seconds (tested). */
   async function writeSet(slots) {
     await send([0x05, 1]); await sleep(80);
     for (let i = 0; i < slots.length; i++) {
       const lay = layoutFor(slots[i]);
       log(`Storing preset ${i + 1} of ${slots.length}: ${slots[i]}${i === 0 ? " (phone message)" : ""}`);
-      await upload(programFor(lay), i, slots.length, 0);
+      const moving = !!lay.frames || lay.motion === "scroll" || lay.motion === "flash";
+      await upload(programFor(lay), i, slots.length, moving ? 0 : slots.length);
       if (i < slots.length - 1) await sleep(150);
     }
   }
