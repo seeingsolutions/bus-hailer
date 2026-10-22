@@ -286,7 +286,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.15.1</p>
+      <p class="hint">Version 1.16.0</p>
     </div>
   </details>
 
@@ -714,8 +714,8 @@ if (typeof module !== "undefined") module.exports = Proto;
   }
 
   function layoutFor(text) {
-    /* Everything that fits goes as text, with the stop sign as a colour character: text presets hold reliably on the sign (tested),
-       full-colour pictures in a stored set do not. A space before the stop sign becomes a one-LED gap. */
+    /* Everything that fits on one screen goes as steady text, with the stop sign as a colour character.
+       A space before the stop sign becomes a one-LED gap. */
     text = text.replace(/ +(?=\u{1F6D1})/gu, "");
     const { w, h } = panel();
     const colour = COLOURS.find(c => c.id === val("colour")).rgb;
@@ -723,27 +723,16 @@ if (typeof module !== "undefined") module.exports = Proto;
     let glyphs = renderGlyphs(text, colour);
     let width = widthOf(glyphs);
     let motion = val("motion");
-    /* Steady text must leave at least one spare column: text exactly as wide as the sign keeps redrawing (tested). */
-    const fit = w - 1;
-    /* In Automatic, try smaller lettering before giving up on a steady message: medium, then the tall LED alphabet, then small. */
-    const firstTry = glyphs;
+    const fit = w;
     if ((motion === "auto" || motion === "words" || motion === "static") && width > fit) {
+      /* Tallest first: medium bold, tall LED alphabet, narrowed bold (at most 30%), then the small sizes. */
+      const narrowed = (from, to) => { const o = []; for (let rows = from; rows >= to; rows--) for (const sq of [0.9, 0.8, 0.7]) o.push(() => renderGlyphs(text, colour, rows, sq)); return o; };
       const options = [() => renderGlyphs(text, colour, "medium"), () => renderPixelGlyphs(text, colour, Math.max(1, Math.floor((h - 2) / 7))),
-        () => renderGlyphs(text, colour, "small"), () => renderPixelGlyphs(text, colour, 1)];
-      const made = options.map(make => make()).filter(Boolean);
-      log(`Fitting "${text}" in ${fit} columns: bold ${widthOf(firstTry)}, then ${made.map(widthOf).join(", ")} (medium, LED tall, small, LED short)`);
-      const textFit = made.find(g => widthOf(g) <= fit);
+        ...narrowed(h - 2, 9), () => renderGlyphs(text, colour, "small"), () => renderPixelGlyphs(text, colour, 1), ...narrowed(8, 7)];
+      let textFit = null;
+      for (const make of options) { const g = make(); if (g && widthOf(g) <= fit) { textFit = g; break; } }
       if (textFit) { glyphs = textFit; width = widthOf(textFit); }
-      else {
-        /* Exactly full width: text that wide keeps redrawing, so send it as one still picture instead, which holds (tested). */
-        const full = [firstTry, ...made].find(g => widthOf(g) <= w);
-        if (full) {
-          const cols = glyphsToPx(full), left = Math.floor((w - cols.length) / 2);
-          const px = Array.from({ length: w }, () => new Array(h).fill(null));
-          cols.forEach((col, x) => { px[left + x] = col.slice(); });
-          return { picture: px, motion: "static", w, h };
-        }
-      }
+      else log(`"${text}" doesn't fit on one screen, so it will go word by word or scroll`);
     }
     if ((motion === "auto" || motion === "words") && width > fit) { const wl = wordsLayout(text); if (wl) return wl; }
     if (motion === "auto" || motion === "words") motion = width > fit ? "scroll" : "static";
