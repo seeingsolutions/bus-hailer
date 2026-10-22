@@ -286,7 +286,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.16.1</p>
+      <p class="hint">Version 1.16.2</p>
     </div>
   </details>
 
@@ -725,11 +725,12 @@ if (typeof module !== "undefined") module.exports = Proto;
     let motion = val("motion");
     const fit = w;
     if ((motion === "auto" || motion === "words" || motion === "static") && width > fit) {
-      /* Tallest first: medium bold, tall LED alphabet, narrowed bold (at most 30%), then the small sizes, then narrower bold. */
+      /* Tallest first: medium bold, tall LED alphabet, lightly narrowed bold, then the tallest bold that fits when narrowed further. */
       const narrowed = (from, to, sqs = [0.9, 0.8, 0.7]) => { const o = []; for (let rows = from; rows >= to; rows--) for (const sq of sqs) o.push(() => renderGlyphs(text, colour, rows, sq)); return o; };
+      /* Same order as word frames, which gave the narrowed TEST that looked right on the sign: height first, then narrowing. */
       const options = [() => renderGlyphs(text, colour, "medium"), () => renderPixelGlyphs(text, colour, Math.max(1, Math.floor((h - 2) / 7))),
-        ...narrowed(h - 2, 9), () => renderGlyphs(text, colour, "small"), () => renderPixelGlyphs(text, colour, 1), ...narrowed(8, 7),
-        ...narrowed(h - 2, 7, [0.62, 0.55])]; // last resort, as in the photo that looked fine
+        ...narrowed(h - 2, 10, [0.9, 0.8]), ...narrowed(h - 2, 7, [0.7, 0.62, 0.55]),
+        () => renderGlyphs(text, colour, "small"), () => renderPixelGlyphs(text, colour, 1)];
       let textFit = null;
       for (const make of options) { const g = make(); if (g && widthOf(g) <= fit) { textFit = g; break; } }
       if (textFit) { glyphs = textFit; width = widthOf(textFit); }
