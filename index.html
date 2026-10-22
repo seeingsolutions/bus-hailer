@@ -286,7 +286,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.13.1</p>
+      <p class="hint">Version 1.14.0</p>
     </div>
   </details>
 
@@ -563,7 +563,7 @@ if (typeof module !== "undefined") module.exports = Proto;
   function wordsLayout(text) {
     const { w, h } = panel();
     const colour = COLOURS.find(c => c.id === val("colour")).rgb;
-    const tokens = text.split(/\s+/).filter(Boolean);
+    const tokens = text.replace(/\u{1F6D1}/gu, " \u{1F6D1}").split(/\s+/).filter(Boolean);
     const plain = tokens.filter(t => t !== SIGN), hasSign = tokens.includes(SIGN);
     if (!plain.length || plain.length + (hasSign ? 1 : 0) < 2) return null;
     const plans = hasSign ? [[...plain.slice(0, -1), plain[plain.length - 1] + SIGN], [...plain, SIGN]] : [plain];
@@ -639,7 +639,7 @@ if (typeof module !== "undefined") module.exports = Proto;
     const blank = () => new Array(h).fill(0);
     for (const ch of Array.from(text)) {
       if (ch === " ") { glyphs.push({ cols: [blank(), blank(), blank()], colour }); continue; }
-      if (ch === SIGN || ch === HAND) { const g = renderGlyphs(ch, colour); if (g.length) { g[0].cols.push(blank()); glyphs.push(g[0]); } continue; }
+      if (ch === SIGN || ch === HAND) { const g = renderGlyphs(ch, colour); if (g.length) { if (!g[0].emoji) g[0].cols.push(blank()); glyphs.push(g[0]); } continue; }
       const rows = PIXEL_FONT[ch]; if (!rows) return null;
       const r = rows.split(" ");
       let cols = [0, 1, 2, 3, 4].map(x => { const c = blank(); for (let y = 0; y < gh; y++) if (r[Math.floor(y / scaleY)][x] === "1") c[top + y] = 1; return c; });
@@ -648,6 +648,9 @@ if (typeof module !== "undefined") module.exports = Proto;
       cols.push(blank());
       glyphs.push({ cols, colour });
     }
+    const last = glyphs[glyphs.length - 1];
+    if (last && !last.emoji) while (last.cols.length > 1 && !last.cols[last.cols.length - 1].some(Boolean)) last.cols.pop();
+    if (last && last.emoji) while (last.cols.length > 1 && !last.cols[last.cols.length - 1].some(Boolean)) { last.cols.pop(); last.emoji.pop(); }
     return glyphs;
   }
   /* size: "large", "medium", "small" or a number of LED rows for capital letters. squeeze below 1 narrows the letters. */
@@ -705,26 +708,25 @@ if (typeof module !== "undefined") module.exports = Proto;
       cols.push(blank()); // one LED gap between letters
       glyphs.push({ cols, colour });
     }
-    if (glyphs.length) { const last = glyphs[glyphs.length - 1].cols; if (last.length > 1 && !last[last.length - 1].some(Boolean)) last.pop(); }
+    if (glyphs.length) { const g = glyphs[glyphs.length - 1], last = g.cols; if (last.length > 1 && !last[last.length - 1].some(Boolean)) { last.pop(); if (g.emoji) g.emoji.pop(); } }
     return glyphs;
   }
 
   function layoutFor(text) {
-    /* A steady stop-sign message goes as one picture; anything that scrolls carries the sign as a colour character. */
-    if (text.includes(SIGN) && val("motion") !== "scroll") {
-      const pic = pictureLayout(text);
-      if (pic) return pic;
-    }
+    /* Everything that fits goes as text, with the stop sign as a colour character: text presets hold reliably on the sign (tested),
+       full-colour pictures in a stored set do not. A space before the stop sign becomes a one-LED gap. */
+    text = text.replace(/ +(?=\u{1F6D1})/gu, "");
     const { w, h } = panel();
     const colour = COLOURS.find(c => c.id === val("colour")).rgb;
+    const widthOf = g => g.reduce((a, x) => a + x.cols.length, 0);
     let glyphs = renderGlyphs(text, colour);
-    let width = glyphs.reduce((a, g) => a + g.cols.length, 0);
+    let width = widthOf(glyphs);
     let motion = val("motion");
-    /* In Automatic, shrink letters rather than scroll when medium size fits, because steady messages hold on the sign. */
-    if ((motion === "auto" || motion === "words") && width > w && val("size") === "large") {
-      const smaller = renderGlyphs(text, colour, "medium");
-      const sw = smaller.reduce((a, g) => a + g.cols.length, 0);
-      if (sw <= w) { glyphs = smaller; width = sw; }
+    /* In Automatic, try smaller lettering before giving up on a steady message: medium, then the tall LED alphabet, then small. */
+    if ((motion === "auto" || motion === "words") && width > w) {
+      const options = [() => renderGlyphs(text, colour, "medium"), () => renderPixelGlyphs(text, colour, Math.max(1, Math.floor((h - 2) / 7))),
+        () => renderGlyphs(text, colour, "small"), () => renderPixelGlyphs(text, colour, 1)];
+      for (const make of options) { const g = make(); if (g && widthOf(g) <= w) { glyphs = g; width = widthOf(g); break; } }
     }
     if ((motion === "auto" || motion === "words") && width > w) { const wl = wordsLayout(text); if (wl) return wl; }
     if (motion === "auto" || motion === "words") motion = width > w ? "scroll" : "static";
