@@ -37,10 +37,11 @@ A VoiceOver-first web app that drives a Bluetooth LED sign so a blind or low-vis
   - Moving content (scrolling, word-by-word animation, flashing) must use 0, which repeats forever.
   - Steady text with 0 redraws every couple of seconds, so steady presets use the set size (9).
 - **Writing slot 0 starts a fresh set and wipes the others.** So the whole set is always written in order, slots 0 to 8, on every save and on every phone message.
-- **Unused slots show rainbow demo content, and the cable button steps onto them.** So all 9 slots are always filled, with spare ones showing a dim grey `EMPTY`. EMPTY was chosen because it can't be mistaken for a route number.
+- **Unused slots show rainbow demo content, and the cable button steps onto them.** So all 9 slots are always filled, with spare ones showing a dim grey `EMPTY`. EMPTY was chosen because it can't be mistaken for a route number. Tested in v1.19.0: EMPTY looks good and the grey is fine.
+- Tested in v1.19.0: a phone send (all 9 slots) takes about 5 seconds.
 - The sign resumes on the last shown preset after a power cycle. Cable button presses are not reported over Bluetooth.
 - A one-frame animation plus a blank gap just blinks. Word-by-word must have at least 2 frames.
-- Narrowed bold lettering destroys diagonal letters (A and X were unreadable). Words with A, K, M, N, V, W, X, Y, Z, 2, 4 or 7 use the narrow LED alphabet instead.
+- Narrowed bold lettering destroys diagonal letters (A and X were unreadable). Words with A, K, M, N, V, W, X, Y, Z, 2, 4 or 7 use the narrow LED alphabet instead. Tested in v1.19.0: the X in ALEX is clear in the narrow alphabet, so it stays 4 wide.
 
 ## Current design (v1.19.0)
 
@@ -57,8 +58,7 @@ A VoiceOver-first web app that drives a Bluetooth LED sign so a blind or low-vis
 
 ## Open items
 
-- To test v1.19.0: how EMPTY looks and whether the grey is bright enough; how long a phone send takes now that all 9 slots go every time; whether X is readable in ALEX (could be made 5 wide).
-- If sends are too slow: send preset 1 first, or skip unchanged slots.
+- Send speed (about 5 s). Untested ideas: (a) check whether the new number appears on the sign after slot 0 finishes or only at the end; (b) if writing a slot other than 0 does not wipe the set, the phone message could live in one slot that is rewritten alone. Skipping unchanged slots can't work while the phone message is in slot 0, because writing slot 0 wipes the rest.
 - Simplification pass. The main screen becomes favourites, one bus-number box and one big Show button, with Automatic deciding the layout. Everything else moves into Setup.
 - "Reset sign for a customer" step: writes a clean set before handover. A new sign arrives full of demos.
 - Later:
