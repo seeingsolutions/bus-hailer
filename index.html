@@ -177,15 +177,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
     <h2 id="favHeading">Favourite buses</h2>
     <ul id="favs" class="favs"></ul>
     <button type="button" id="saveToSign">Save favourites to sign</button>
-    <p class="hint">Stores each favourite on the sign, so the button on its cable switches between them without the phone. The sign holds on the first one. Press the cable button to move to the next, and it stays on whichever you choose, even after switching off.</p>
-    <fieldset>
-      <legend>When you send from the phone</legend>
-      <div class="choices">
-        <label class="choice"><input type="radio" name="sendMode" id="sendOnly" value="only"><span>Show only this message</span></label>
-        <label class="choice"><input type="radio" name="sendMode" id="sendKeep" value="keep"><span>Keep stored favourites</span></label>
-      </div>
-      <p class="hint">"Show only this message" holds your message steadily but clears the stored favourites. "Keep stored favourites" adds your message after them, so it takes its turn in the cycle.</p>
-    </fieldset>
+    <p class="hint">Stores up to 8 favourites on the sign, so the button on its cable switches between them without the phone. Preset 1 is always the last message sent from the phone; your favourites follow it. The sign stays on whichever preset is showing, even after switching off.</p>
   </section>
 
   <section aria-labelledby="msgHeading">
@@ -203,10 +195,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
   <section aria-labelledby="signHeading">
     <h2 id="signHeading">Sign controls</h2>
     <div class="card">
-      <div class="row">
-        <button type="button" id="clearBtn">Clear sign</button>
-        <button type="button" id="powerBtn" aria-pressed="true">Display on</button>
-      </div>
+      <button type="button" id="powerBtn" aria-pressed="true">Display on</button>
       <div class="field">
         <label for="brightness">Brightness</label>
         <input id="brightness" type="range" min="5" max="255" step="25" value="255" aria-valuetext="Brightness 100 percent">
@@ -297,7 +286,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.12.0</p>
+      <p class="hint">Version 1.13.0</p>
     </div>
   </details>
 
@@ -485,8 +474,8 @@ if (typeof module !== "undefined") module.exports = Proto;
   $("colours").innerHTML = COLOURS.map(c =>
     `<label class="choice"><input type="radio" name="colour" id="c_${c.id}" value="${c.id}"><span><span class="swatch" aria-hidden="true" style="background:rgb(${c.rgb.join(",")})"></span>${c.name}</span></label>`).join("");
 
-  const radios = ["wording", "colour", "motion", "size", "layout", "stay", "sendMode"];
-  const defaults = { wording: "number", colour: "amber", motion: "auto", speed: "normal", size: "large", layout: "0", stay: "255", sendMode: "only" };
+  const radios = ["wording", "colour", "motion", "size", "layout", "stay"];
+  const defaults = { wording: "number", colour: "amber", motion: "auto", speed: "normal", size: "large", layout: "0", stay: "255" };
   for (const r of radios) {
     const v = store.get(r, defaults[r]);
     const el = document.querySelector(`input[name="${r}"][value="${v}"]`) || document.querySelector(`input[name="${r}"][value="${defaults[r]}"]`);
@@ -912,15 +901,11 @@ if (typeof module !== "undefined") module.exports = Proto;
     if (!(await ensure())) return;
     setStatus("busy", "Sending…"); say("Sending " + (spoken || text));
     try {
-      /* Keep stored favourites: put a one-off message in the slot after them. */
-      const stored = val("sendMode") === "keep" ? store.get("storedCount", 0) : 0;
-      const limit = maxSlots || 9;
-      const index = stored && stored < limit ? stored : 0, count = stored && stored < limit ? stored + 1 : 1;
-      if (stored && stored >= limit) log("All slots used by favourites, so this message replaces them");
-      if (count === 1) store.set("storedCount", 0);
-      log(`Sending to slot ${index + 1} of ${count}`);
-      await exclusive(async () => { await send([0x05, 1]); await sleep(80); await upload(programFor(lay), index, count, count); });
-      lastShown = text; $("powerBtn").setAttribute("aria-pressed", "true"); $("powerBtn").textContent = "Display on";
+      /* Phone messages always go into preset 1. Telling the sign the set's full size keeps favourites 2 onward in place. */
+      const count = Math.max(1, store.get("slotCount", 1));
+      log(`Sending to preset 1 of ${count}`);
+      await exclusive(async () => { await send([0x05, 1]); await sleep(80); await upload(programFor(lay), 0, count, count); });
+      lastShown = text; store.set("liveText", text); $("powerBtn").setAttribute("aria-pressed", "true"); $("powerBtn").textContent = "Display on";
       setStatus("connected", "Showing " + (spoken || text));
       say(`Sign now showing ${spoken || text}`);
     } catch (err) {
@@ -975,14 +960,6 @@ if (typeof module !== "undefined") module.exports = Proto;
     if (favs.includes(n)) { say(`${n} is already a favourite`); return; }
     favs.push(n); store.set("favs", favs); renderFavs(); say(`${n} saved to favourites`);
   };
-  $("clearBtn").onclick = async () => {
-    if (!(await ensure())) return;
-    const stored = val("sendMode") === "keep" ? store.get("storedCount", 0) : 0, limit = maxSlots || 9, spare = stored && stored < limit;
-    if (!spare) store.set("storedCount", 0);
-    try { await exclusive(() => upload(Proto.textProgram([{ cols: [new Array(panel().h).fill(0)], colour: [0, 0, 0] }], { ...layoutFor(" ").opts, mode: 1 }), spare ? stored : 0, spare ? stored + 1 : 1, spare ? stored + 1 : 1));
-      lastShown = ""; showPreview("", null); setStatus("connected", "Sign cleared"); say("Sign cleared"); }
-    catch (err) { log(err.message); say("Couldn't clear the sign. " + err.message, true); }
-  };
   $("powerBtn").onclick = async () => {
     if (!(await ensure())) return;
     const on = $("powerBtn").getAttribute("aria-pressed") !== "true";
@@ -1007,23 +984,26 @@ if (typeof module !== "undefined") module.exports = Proto;
     await fontReady;
     if (!(await ensure())) return;
     let list = favs.map(wordingFor);
-    if (maxSlots && list.length > maxSlots) { say(`The sign holds ${maxSlots} programs, so only the first ${maxSlots} favourites will be stored.`, true); list = list.slice(0, maxSlots); }
+    const room = (maxSlots || 9) - 1;
+    if (list.length > room) { say(`The sign has room for ${room} favourites, so only the first ${room} will be stored.`, true); list = list.slice(0, room); }
+    const live = store.get("liveText", "") || list[0];
+    const slots = [live, ...list];
     setStatus("busy", "Saving favourites…"); say(`Saving ${list.length} favourites to the sign`);
     try {
       await exclusive(async () => {
         await send([0x05, 1]); await sleep(80);
-        for (let i = 0; i < list.length; i++) {
-          const text = $("upper").checked ? list[i].toUpperCase() : list[i];
+        for (let i = 0; i < slots.length; i++) {
+          const text = $("upper").checked ? slots[i].toUpperCase() : slots[i];
           const lay = layoutFor(text);
-          log(`Storing slot ${i + 1} of ${list.length}: ${text}`);
+          log(`Storing preset ${i + 1} of ${slots.length}: ${text}${i === 0 ? " (phone message)" : ""}`);
           /* Sending the set size as the last start byte makes the sign hold on one preset instead of cycling (tested on hardware). */
-          await upload(programFor(lay), i, list.length, list.length);
+          await upload(programFor(lay), i, slots.length, slots.length);
           await sleep(150);
         }
       });
-      store.set("storedCount", list.length);
+      store.set("slotCount", slots.length);
       setStatus("connected", `${list.length} favourites stored`);
-      say(`Saved ${list.length} favourites. Press the button on the sign's cable to switch between them.`);
+      say(`Saved ${list.length} favourites as presets 2 to ${slots.length}. Preset 1 is your last phone message. Press the button on the sign's cable to move between them.`);
     } catch (err) { log("Saving favourites failed: " + err.message); say("Couldn't save all the favourites. " + err.message, true); }
   };
   for (const [id, v, msg] of [["flipNormal", 0, "Sign set the normal way up"], ["flipOver", 1, "Sign turned upside down"]]) {
