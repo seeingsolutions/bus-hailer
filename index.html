@@ -284,6 +284,16 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
         </div>
       </fieldset>
       <fieldset>
+        <legend>Preset playback test</legend>
+        <p class="hint">Experiment: changes one unexplained setting sent with each stored favourite. After choosing, tap Save favourites to sign and watch whether it cycles.</p>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="showTest" id="shA" value="one"><span>A: 1 (current)</span></label>
+          <label class="choice"><input type="radio" name="showTest" id="shB" value="zero"><span>B: 0</span></label>
+          <label class="choice"><input type="radio" name="showTest" id="shC" value="all"><span>C: number of favourites</span></label>
+          <label class="choice"><input type="radio" name="showTest" id="shD" value="first"><span>D: 1 for first, 0 for others</span></label>
+        </div>
+      </fieldset>
+      <fieldset>
         <legend>Which way up</legend>
         <p class="hint">Double-tapping the button on the sign's cable also flips it.</p>
         <div class="row">
@@ -297,7 +307,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.10.0</p>
+      <p class="hint">Version 1.11.0</p>
     </div>
   </details>
 
@@ -485,8 +495,8 @@ if (typeof module !== "undefined") module.exports = Proto;
   $("colours").innerHTML = COLOURS.map(c =>
     `<label class="choice"><input type="radio" name="colour" id="c_${c.id}" value="${c.id}"><span><span class="swatch" aria-hidden="true" style="background:rgb(${c.rgb.join(",")})"></span>${c.name}</span></label>`).join("");
 
-  const radios = ["wording", "colour", "motion", "size", "layout", "stay", "sendMode"];
-  const defaults = { wording: "number", colour: "amber", motion: "auto", speed: "normal", size: "large", layout: "0", stay: "255", sendMode: "only" };
+  const radios = ["wording", "colour", "motion", "size", "layout", "stay", "sendMode", "showTest"];
+  const defaults = { wording: "number", colour: "amber", motion: "auto", speed: "normal", size: "large", layout: "0", stay: "255", sendMode: "only", showTest: "one" };
   for (const r of radios) {
     const v = store.get(r, defaults[r]);
     const el = document.querySelector(`input[name="${r}"][value="${v}"]`) || document.querySelector(`input[name="${r}"][value="${defaults[r]}"]`);
@@ -1016,7 +1026,9 @@ if (typeof module !== "undefined") module.exports = Proto;
           const text = $("upper").checked ? list[i].toUpperCase() : list[i];
           const lay = layoutFor(text);
           log(`Storing slot ${i + 1} of ${list.length}: ${text}`);
-          await upload(programFor(lay), i, list.length, 1);
+          const t = val("showTest"), show = t === "zero" ? 0 : t === "all" ? list.length : t === "first" ? (i === 0 ? 1 : 0) : 1;
+          log(`Show byte ${show}`);
+          await upload(programFor(lay), i, list.length, show);
           await sleep(150);
         }
       });
