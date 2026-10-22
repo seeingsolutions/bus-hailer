@@ -286,7 +286,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.16.2</p>
+      <p class="hint">Version 1.17.0</p>
     </div>
   </details>
 
@@ -571,6 +571,7 @@ if (typeof module !== "undefined") module.exports = Proto;
     const tries = [];
     for (let rows = h - 2; rows >= 10; rows--) for (const sq of [1, 0.9, 0.8]) tries.push(word => renderGlyphs(word, colour, rows, sq));
     for (let k = Math.floor((h - 2) / 7); k >= 1; k--) tries.push(word => renderPixelGlyphs(word, colour, k));
+    for (let k = Math.floor((h - 2) / 7); k >= 1; k--) tries.push(word => renderPixelGlyphs(word, colour, k, NARROW_FONT));
     for (let rows = h - 2; rows >= 7; rows--) for (const sq of [0.7, 0.62, 0.55]) tries.push(word => renderGlyphs(word, colour, rows, sq));
     for (const plan of plans) for (const render of tries) {
       if (plan.length < 2) continue; // one frame plus the gap would just blink
@@ -635,15 +636,56 @@ if (typeof module !== "undefined") module.exports = Proto;
     '/': "00001 00010 00010 00100 01000 01000 10000",
     '!': "00100 00100 00100 00100 00100 00000 00100"
   };
-  function renderPixelGlyphs(text, colour, scaleY) {
+  /* Narrow LED alphabet, mostly 4 wide, for words that need diagonals where narrowed bold breaks up. */
+  const NARROW_FONT = {
+    "A": ".##. #..# #..# #### #..# #..# #..#",
+    "B": "###. #..# #..# ###. #..# #..# ###.",
+    "C": ".##. #..# #... #... #... #..# .##.",
+    "D": "###. #..# #..# #..# #..# #..# ###.",
+    "E": "#### #... #... ###. #... #... ####",
+    "F": "#### #... #... ###. #... #... #...",
+    "G": ".##. #..# #... #.## #..# #..# .###",
+    "H": "#..# #..# #..# #### #..# #..# #..#",
+    "I": "### .#. .#. .#. .#. .#. ###",
+    "J": "..## ...# ...# ...# ...# #..# .##.",
+    "K": "#..# #..# #.#. ##.. #.#. #..# #..#",
+    "L": "#... #... #... #... #... #... ####",
+    "M": "#...# ##.## #.#.# #.#.# #...# #...# #...#",
+    "N": "#..# ##.# ##.# #.## #.## #..# #..#",
+    "O": ".##. #..# #..# #..# #..# #..# .##.",
+    "P": "###. #..# #..# ###. #... #... #...",
+    "Q": ".##. #..# #..# #..# #.#. #..# .#.#",
+    "R": "###. #..# #..# ###. #.#. #..# #..#",
+    "S": ".### #... #... .##. ...# ...# ###.",
+    "T": "### .#. .#. .#. .#. .#. .#.",
+    "U": "#..# #..# #..# #..# #..# #..# .##.",
+    "V": "#..# #..# #..# #..# #..# .##. .##.",
+    "W": "#...# #...# #...# #.#.# #.#.# ##.## #...#",
+    "X": "#..# #..# .##. .##. .##. #..# #..#",
+    "Y": "#..# #..# #..# .##. .##. .##. .##.",
+    "Z": "#### ...# ..#. ..#. .#.. #... ####",
+    "0": ".##. #..# #..# #..# #..# #..# .##.",
+    "1": ".#. ##. .#. .#. .#. .#. ###",
+    "2": ".##. #..# ...# ..#. .#.. #... ####",
+    "3": "###. ...# ...# .##. ...# ...# ###.",
+    "4": "..#. .##. #.#. #.#. #### ..#. ..#.",
+    "5": "#### #... ###. ...# ...# #..# .##.",
+    "6": ".##. #... #... ###. #..# #..# .##.",
+    "7": "#### ...# ..#. ..#. .#.. .#.. .#..",
+    "8": ".##. #..# #..# .##. #..# #..# .##.",
+    "9": ".##. #..# #..# .### ...# ...# .##.",
+    "-": ".... .... .... #### .... .... ....",
+    ".": ". . . . . . #"
+  };
+  function renderPixelGlyphs(text, colour, scaleY, font = PIXEL_FONT) {
     const { h } = panel(), gh = 7 * scaleY, top = Math.floor((h - gh) / 2), glyphs = [];
     const blank = () => new Array(h).fill(0);
     for (const ch of Array.from(text)) {
       if (ch === " ") { glyphs.push({ cols: [blank(), blank(), blank()], colour }); continue; }
       if (ch === SIGN || ch === HAND) { const g = renderGlyphs(ch, colour); if (g.length) { if (!g[0].emoji) g[0].cols.push(blank()); glyphs.push(g[0]); } continue; }
-      const rows = PIXEL_FONT[ch]; if (!rows) return null;
-      const r = rows.split(" ");
-      let cols = [0, 1, 2, 3, 4].map(x => { const c = blank(); for (let y = 0; y < gh; y++) if (r[Math.floor(y / scaleY)][x] === "1") c[top + y] = 1; return c; });
+      const rows = font[ch]; if (!rows) return null;
+      const r = rows.split(" "), on = v => v === "1" || v === "#";
+      let cols = [...Array(r[0].length).keys()].map(x => { const c = blank(); for (let y = 0; y < gh; y++) if (on(r[Math.floor(y / scaleY)][x])) c[top + y] = 1; return c; });
       while (cols.length && !cols[0].some(Boolean)) cols.shift();
       while (cols.length && !cols[cols.length - 1].some(Boolean)) cols.pop();
       cols.push(blank());
@@ -728,9 +770,12 @@ if (typeof module !== "undefined") module.exports = Proto;
       /* Tallest first: medium bold, tall LED alphabet, lightly narrowed bold, then the tallest bold that fits when narrowed further. */
       const narrowed = (from, to, sqs = [0.9, 0.8, 0.7]) => { const o = []; for (let rows = from; rows >= to; rows--) for (const sq of sqs) o.push(() => renderGlyphs(text, colour, rows, sq)); return o; };
       /* Same order as word frames, which gave the narrowed TEST that looked right on the sign: height first, then narrowing. */
-      const options = [() => renderGlyphs(text, colour, "medium"), () => renderPixelGlyphs(text, colour, Math.max(1, Math.floor((h - 2) / 7))),
-        ...narrowed(h - 2, 10, [0.9, 0.8]), ...narrowed(h - 2, 7, [0.7, 0.62, 0.55]),
-        () => renderGlyphs(text, colour, "small"), () => renderPixelGlyphs(text, colour, 1)];
+      /* Narrowed bold breaks up diagonal strokes (A and X were unreadable), so words with diagonal letters use the narrow LED alphabet instead. */
+      const k = Math.max(1, Math.floor((h - 2) / 7)), diagonal = /[AKMNVWXYZ247]/.test(text);
+      const options = [() => renderGlyphs(text, colour, "medium"), () => renderPixelGlyphs(text, colour, k),
+        ...(diagonal ? [] : [...narrowed(h - 2, 10, [0.9, 0.8]), ...narrowed(h - 2, 7, [0.7, 0.62, 0.55])]),
+        () => renderPixelGlyphs(text, colour, k, NARROW_FONT), () => renderGlyphs(text, colour, "small"),
+        () => renderPixelGlyphs(text, colour, 1), () => renderPixelGlyphs(text, colour, 1, NARROW_FONT)];
       let textFit = null;
       for (const make of options) { const g = make(); if (g && widthOf(g) <= fit) { textFit = g; break; } }
       if (textFit) { glyphs = textFit; width = widthOf(textFit); }
