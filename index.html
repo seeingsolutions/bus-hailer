@@ -286,7 +286,7 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.14.2</p>
+      <p class="hint">Version 1.14.3</p>
     </div>
   </details>
 
@@ -573,6 +573,7 @@ if (typeof module !== "undefined") module.exports = Proto;
     for (let k = Math.floor((h - 2) / 7); k >= 1; k--) tries.push(word => renderPixelGlyphs(word, colour, k));
     for (let rows = h - 2; rows >= 7; rows--) for (const sq of [0.7, 0.62, 0.55]) tries.push(word => renderGlyphs(word, colour, rows, sq));
     for (const plan of plans) for (const render of tries) {
+      if (plan.length < 2) continue; // one frame plus the gap would just blink
       const rendered = plan.map(render);
       if (rendered.some(g => !g)) continue;
       const cols = rendered.map(glyphsToPx);
@@ -722,14 +723,16 @@ if (typeof module !== "undefined") module.exports = Proto;
     let glyphs = renderGlyphs(text, colour);
     let width = widthOf(glyphs);
     let motion = val("motion");
+    /* Steady text must leave at least one spare column: text exactly as wide as the sign keeps redrawing (tested). */
+    const fit = w - 1;
     /* In Automatic, try smaller lettering before giving up on a steady message: medium, then the tall LED alphabet, then small. */
-    if ((motion === "auto" || motion === "words") && width > w) {
+    if ((motion === "auto" || motion === "words") && width > fit) {
       const options = [() => renderGlyphs(text, colour, "medium"), () => renderPixelGlyphs(text, colour, Math.max(1, Math.floor((h - 2) / 7))),
         () => renderGlyphs(text, colour, "small"), () => renderPixelGlyphs(text, colour, 1)];
-      for (const make of options) { const g = make(); if (g && widthOf(g) <= w) { glyphs = g; width = widthOf(g); break; } }
+      for (const make of options) { const g = make(); if (g && widthOf(g) <= fit) { glyphs = g; width = widthOf(g); break; } }
     }
-    if ((motion === "auto" || motion === "words") && width > w) { const wl = wordsLayout(text); if (wl) return wl; }
-    if (motion === "auto" || motion === "words") motion = width > w ? "scroll" : "static";
+    if ((motion === "auto" || motion === "words") && width > fit) { const wl = wordsLayout(text); if (wl) return wl; }
+    if (motion === "auto" || motion === "words") motion = width > fit ? "scroll" : "static";
     if (motion !== "scroll" && width < w) {
       const pad = Math.floor((w - width) / 2);
       if (pad > 0) glyphs = [{ cols: Array.from({ length: pad }, () => new Array(h).fill(0)), colour }, ...glyphs];
