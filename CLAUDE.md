@@ -43,7 +43,7 @@ A VoiceOver-first web app that drives a Bluetooth LED sign so a blind or low-vis
 - A one-frame animation plus a blank gap just blinks. Word-by-word must have at least 2 frames.
 - Narrowed bold lettering destroys diagonal letters (A and X were unreadable). Words with A, K, M, N, V, W, X, Y, Z, 2, 4 or 7 use the narrow LED alphabet instead. Tested in v1.19.0: the X in ALEX is clear in the narrow alphabet, so it stays 4 wide.
 
-## Current design (v1.20.0)
+## Current design (v1.20.1)
 
 - Preset 1 holds the last phone message, presets 2 to 9 hold up to 8 favourites, and spare presets show EMPTY.
 - Wording options: number only, number with stop sign (12 by 12 red octagon with a white bar, sent as an emoji glyph), number with hand, or number then STOP.
@@ -59,6 +59,7 @@ A VoiceOver-first web app that drives a Bluetooth LED sign so a blind or low-vis
   - Phone display is a full-screen black overlay with the biggest bold text that fits, in the chosen colour, using the same wording. The stop sign is an SVG octagon; the hand is the emoji. Flashing movement flashes it.
   - It tries one line and one word per line, and keeps whichever gives bigger letters. Wake lock is held while it shows. Close button at the bottom, or Escape.
   - VoiceOver hears what's showing, a hint to turn sideways (if portrait) and to raise brightness. A web page can't set screen brightness.
+  - Tested v1.20.0 on the iPhone: works, but the text was boxed in at the sides and didn't resize after turning back to portrait. v1.20.1 drops the safe-area side padding (Bluefy already keeps clear of the notch), stops the old size stretching the measured area, and refits 400 ms after a rotation. The grey strips at the screen edges look like Bluefy's own frame.
   - Works in plain Safari. With no Bluetooth and no saved choice, it defaults to this phone's screen. Send test pattern always goes to the sign.
 
 ## Open items

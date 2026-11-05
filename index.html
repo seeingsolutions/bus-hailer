@@ -129,8 +129,10 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
 .check { display: flex; gap: 12px; align-items: center; font-weight: 700; }
 .check input { width: 28px; height: 28px; accent-color: var(--accent-fill); flex: none; }
 /* Phone display: the phone itself becomes the sign. Black screen, the biggest lettering that fits. */
-.phone-show { position: fixed; inset: 0; z-index: 10; background: #000; color: #fff; display: grid; grid-template-rows: 1fr auto;
-  padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(12px, env(safe-area-inset-left, 0px)); }
+/* Side padding is a fixed 12px: Bluefy already keeps the page clear of the notch, so adding the safe-area insets squeezed the text twice. */
+.phone-show { position: fixed; inset: 0; z-index: 10; background: #000; color: #fff; display: grid;
+  grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+  padding: env(safe-area-inset-top, 0px) 12px env(safe-area-inset-bottom, 0px); }
 .phone-stage { display: flex; align-items: center; justify-content: center; overflow: hidden; min-height: 0; }
 .phone-text { display: inline-block; font-family: var(--font-body); font-weight: 700; line-height: 0.92; text-align: center; letter-spacing: 0.02em; }
 .phone-text svg { height: 0.74em; width: 0.74em; margin-left: 0.1em; vertical-align: 0; }
@@ -304,7 +306,7 @@ body.phone-open { overflow: hidden; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.20.0</p>
+      <p class="hint">Version 1.20.1</p>
     </div>
   </details>
 
@@ -1008,7 +1010,9 @@ if (typeof module !== "undefined") module.exports = Proto;
   }
   function fitPhone() {
     if (!phoneOpen) return;
-    const el = $("phoneText"), r = $("phoneStage").getBoundingClientRect(), W = r.width - 8, H = r.height - 8;
+    const el = $("phoneText");
+    el.style.fontSize = "8px"; // shrink first, so the old size can't stretch the area being measured
+    const r = $("phoneStage").getBoundingClientRect(), W = r.width - 8, H = r.height - 8;
     el.style.whiteSpace = "nowrap";
     /* Try one line, then one word per line, and keep whichever lets the letters be bigger. */
     const options = [[phoneLines.join(" ")]]; if (phoneLines.length > 1) options.push(phoneLines);
@@ -1040,7 +1044,12 @@ if (typeof module !== "undefined") module.exports = Proto;
   }
   $("phoneClose").onclick = closePhone;
   document.addEventListener("keydown", e => { if (e.key === "Escape" && phoneOpen) closePhone(); });
-  addEventListener("resize", () => fitPhone());
+  /* iPhone reports the new size a moment after turning, so fit again once things have settled. */
+  let fitTimer;
+  function refit() { requestAnimationFrame(fitPhone); clearTimeout(fitTimer); fitTimer = setTimeout(fitPhone, 400); }
+  addEventListener("resize", refit);
+  addEventListener("orientationchange", refit);
+  if (window.visualViewport) visualViewport.addEventListener("resize", refit);
   function updateTarget() {
     const phone = val("target") === "phone";
     $("showBus").textContent = phone ? "Show on this phone" : "Show on sign";
