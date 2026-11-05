@@ -43,7 +43,7 @@ A VoiceOver-first web app that drives a Bluetooth LED sign so a blind or low-vis
 - A one-frame animation plus a blank gap just blinks. Word-by-word must have at least 2 frames.
 - Narrowed bold lettering destroys diagonal letters (A and X were unreadable). Words with A, K, M, N, V, W, X, Y, Z, 2, 4 or 7 use the narrow LED alphabet instead. Tested in v1.19.0: the X in ALEX is clear in the narrow alphabet, so it stays 4 wide.
 
-## Current design (v1.19.0)
+## Current design (v1.20.0)
 
 - Preset 1 holds the last phone message, presets 2 to 9 hold up to 8 favourites, and spare presets show EMPTY.
 - Wording options: number only, number with stop sign (12 by 12 red octagon with a white bar, sent as an emoji glyph), number with hand, or number then STOP.
@@ -55,12 +55,18 @@ A VoiceOver-first web app that drives a Bluetooth LED sign so a blind or low-vis
   5. The small sizes.
 - Text too long for one screen goes word by word: each word held steady, same size for every word, then a short blank before it repeats. It scrolls only if a single word can't fit.
 - Scroll speed slider 1 to 10 maps to wire values 180 to 250. The default is 7.
+- "Show on" choice at the top: the sign, or this phone's screen (added v1.20.0, untested on the iPhone).
+  - Phone display is a full-screen black overlay with the biggest bold text that fits, in the chosen colour, using the same wording. The stop sign is an SVG octagon; the hand is the emoji. Flashing movement flashes it.
+  - It tries one line and one word per line, and keeps whichever gives bigger letters. Wake lock is held while it shows. Close button at the bottom, or Escape.
+  - VoiceOver hears what's showing, a hint to turn sideways (if portrait) and to raise brightness. A web page can't set screen brightness.
+  - Works in plain Safari. With no Bluetooth and no saved choice, it defaults to this phone's screen. Send test pattern always goes to the sign.
 
 ## Open items
 
 - Send speed (about 5 s). Untested ideas: (a) check whether the new number appears on the sign after slot 0 finishes or only at the end; (b) if writing a slot other than 0 does not wipe the set, the phone message could live in one slot that is rewritten alone. Skipping unchanged slots can't work while the phone message is in slot 0, because writing slot 0 wipes the rest.
 - Simplification pass. The main screen becomes favourites, one bus-number box and one big Show button, with Automatic deciding the layout. Everything else moves into Setup.
 - "Reset sign for a customer" step: writes a clean set before handover. A new sign arrives full of demos.
+- Phone-only version as a product (design direction, decided Nov 2026): an entry-level, paid option for people who won't carry a sign, and a route to the sign. Likely a one-off price, maybe free with a sign. Selling points over a big-text notes app: fast favourites, Siri or Action button, high contrast, full VoiceOver. Next: get customer reactions to v1.20.0.
 - Later:
   - Native iPhone app for customers: Capacitor or Expo, built in the cloud because Alexander has no Mac. Needs an Apple Developer account.
   - ESP32 controller in the handle, with tactile buttons and spoken or vibrating feedback of which preset is showing.

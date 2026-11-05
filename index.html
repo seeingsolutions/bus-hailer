@@ -128,6 +128,16 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
 .notice code { font-size: 1rem; word-break: break-all; }
 .check { display: flex; gap: 12px; align-items: center; font-weight: 700; }
 .check input { width: 28px; height: 28px; accent-color: var(--accent-fill); flex: none; }
+/* Phone display: the phone itself becomes the sign. Black screen, the biggest lettering that fits. */
+.phone-show { position: fixed; inset: 0; z-index: 10; background: #000; color: #fff; display: grid; grid-template-rows: 1fr auto;
+  padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(12px, env(safe-area-inset-left, 0px)); }
+.phone-stage { display: flex; align-items: center; justify-content: center; overflow: hidden; min-height: 0; }
+.phone-text { display: inline-block; font-family: var(--font-body); font-weight: 700; line-height: 0.92; text-align: center; letter-spacing: 0.02em; }
+.phone-text svg { height: 0.74em; width: 0.74em; margin-left: 0.1em; vertical-align: 0; }
+.phone-text.flash { animation: phoneFlash 1s steps(1) infinite; }
+@keyframes phoneFlash { 50% { opacity: 0; } }
+.phone-close { background: #1b1b1b; color: #fff; border-color: #555; min-height: 56px; margin: 8px 0 12px; }
+body.phone-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style>
 
@@ -138,11 +148,19 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
     <h1>Bus Hailer</h1>
     <div id="status" class="status" role="status" data-state="idle"><span class="dot" aria-hidden="true"></span><span id="statusText">Sign not connected</span></div>
     <button id="connectBtn" type="button">Connect to sign</button>
+    <fieldset>
+      <legend>Show on</legend>
+      <div class="choices">
+        <label class="choice"><input type="radio" name="target" id="tSign" value="sign" checked><span>The sign</span></label>
+        <label class="choice"><input type="radio" name="target" id="tPhone" value="phone"><span>This phone's screen</span></label>
+      </div>
+    </fieldset>
   </header>
 
   <div id="noBluetooth" class="notice" hidden>
     <h2>Bluetooth isn't available here</h2>
     <p>Safari on iPhone can't talk to Bluetooth signs. Open this page in the free Bluefy browser from the App Store instead. Copy this link and paste it into Bluefy:</p>
+    <p>You can still show a bus number on this phone's screen here. Choose This phone's screen under Show on.</p>
     <code id="pageLink"></code>
     <button id="copyLink" type="button" class="quiet">Copy link</button>
   </div>
@@ -286,13 +304,21 @@ details > div { padding: 0 18px 18px; display: grid; gap: 18px; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.19.0</p>
+      <p class="hint">Version 1.20.0</p>
     </div>
   </details>
 
   <div id="announce" class="sr-only" aria-live="polite"></div>
   <div id="alert" class="sr-only" aria-live="assertive"></div>
 </main>
+
+<div id="phoneShow" class="phone-show" role="dialog" aria-modal="true" aria-labelledby="phoneShowLabel" hidden>
+  <div class="phone-stage" id="phoneStage">
+    <p id="phoneShowLabel" class="sr-only" tabindex="-1"></p>
+    <div id="phoneText" class="phone-text" aria-hidden="true"></div>
+  </div>
+  <button type="button" id="phoneClose" class="phone-close">Close</button>
+</div>
 
 <script id="protocol">
 /* CoolLEDUX / CoolLED1248 wire protocol.
@@ -474,8 +500,9 @@ if (typeof module !== "undefined") module.exports = Proto;
   $("colours").innerHTML = COLOURS.map(c =>
     `<label class="choice"><input type="radio" name="colour" id="c_${c.id}" value="${c.id}"><span><span class="swatch" aria-hidden="true" style="background:rgb(${c.rgb.join(",")})"></span>${c.name}</span></label>`).join("");
 
-  const radios = ["wording", "colour", "motion", "size", "layout", "stay"];
-  const defaults = { wording: "number", colour: "amber", motion: "auto", speed: "normal", size: "large", layout: "0", stay: "255" };
+  const targetChosen = store.get("target", null) !== null;
+  const radios = ["wording", "colour", "motion", "size", "layout", "stay", "target"];
+  const defaults = { wording: "number", colour: "amber", motion: "auto", speed: "normal", size: "large", layout: "0", stay: "255", target: "sign" };
   for (const r of radios) {
     const v = store.get(r, defaults[r]);
     const el = document.querySelector(`input[name="${r}"][value="${v}"]`) || document.querySelector(`input[name="${r}"][value="${defaults[r]}"]`);
@@ -966,9 +993,68 @@ if (typeof module !== "undefined") module.exports = Proto;
       if (i < slots.length - 1) await sleep(150);
     }
   }
-  async function showText(text, spoken) {
+  /* ---------- show on this phone's screen ---------- */
+  const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const SIGN_SVG = '<svg viewBox="0 0 100 100" aria-hidden="true"><polygon points="29,0 71,0 100,29 100,71 71,100 29,100 0,71 0,29" fill="#e00000"/><rect x="16" y="41" width="68" height="18" fill="#fff"/></svg>';
+  let phoneOpen = false, phoneReturn = null, phoneWake = null, phoneLines = [];
+  function phoneHtml(lines) {
+    return lines.map(l => esc(l).replace(new RegExp(SIGN, "gu"), SIGN_SVG).replace(new RegExp(HAND, "gu"), '<span style="margin-left:.1em">✋</span>')).join("<br>");
+  }
+  /* Biggest font size at which the text fits the stage, found by halving the range. */
+  function fitSize(el, W, H) {
+    let lo = 8, hi = 2000;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; el.style.fontSize = mid + "px"; if (el.scrollWidth <= W && el.scrollHeight <= H) lo = mid; else hi = mid; }
+    return lo;
+  }
+  function fitPhone() {
+    if (!phoneOpen) return;
+    const el = $("phoneText"), r = $("phoneStage").getBoundingClientRect(), W = r.width - 8, H = r.height - 8;
+    el.style.whiteSpace = "nowrap";
+    /* Try one line, then one word per line, and keep whichever lets the letters be bigger. */
+    const options = [[phoneLines.join(" ")]]; if (phoneLines.length > 1) options.push(phoneLines);
+    let best = null;
+    for (const lines of options) { el.innerHTML = phoneHtml(lines); const size = fitSize(el, W, H); if (!best || size > best.size) best = { lines, size }; }
+    el.innerHTML = phoneHtml(best.lines); el.style.fontSize = best.size + "px";
+  }
+  async function showOnPhone(text, spokenText) {
+    const colour = COLOURS.find(c => c.id === val("colour"));
+    phoneLines = text.replace(/ +(?=[\u{1F6D1}✋])/gu, "").split(/\s+/).filter(Boolean);
+    const el = $("phoneText");
+    el.style.color = `rgb(${colour.rgb.join(",")})`;
+    el.classList.toggle("flash", val("motion") === "flash");
+    phoneReturn = document.activeElement;
+    phoneOpen = true; $("phoneShow").hidden = false; document.querySelector("main").inert = true; document.body.classList.add("phone-open");
+    fitPhone();
+    try { if ("wakeLock" in navigator) { phoneWake = await navigator.wakeLock.request("screen"); phoneWake.addEventListener("release", () => { phoneWake = null; }); } } catch { phoneWake = null; }
+    const landscape = innerWidth > innerHeight;
+    $("phoneShowLabel").textContent = `Showing ${spokenText || text} on this phone's screen, in ${colour.name.toLowerCase()}. Hold the screen towards the driver.${landscape ? "" : " Turn the phone sideways for bigger letters."} Turn your screen brightness up if you can. The Close button is at the bottom.`;
+    $("phoneShowLabel").focus();
+    log(`Showing on phone: ${text}`);
+  }
+  function closePhone() {
+    if (!phoneOpen) return;
+    phoneOpen = false; $("phoneShow").hidden = true; document.querySelector("main").inert = false; document.body.classList.remove("phone-open");
+    if (phoneWake) { phoneWake.release().catch(() => {}); phoneWake = null; }
+    say("Closed the phone display");
+    if (phoneReturn && phoneReturn.focus) phoneReturn.focus();
+  }
+  $("phoneClose").onclick = closePhone;
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && phoneOpen) closePhone(); });
+  addEventListener("resize", () => fitPhone());
+  function updateTarget() {
+    const phone = val("target") === "phone";
+    $("showBus").textContent = phone ? "Show on this phone" : "Show on sign";
+    $("showMsg").textContent = phone ? "Show on this phone" : "Show message";
+    renderFavs();
+  }
+  document.querySelectorAll('input[name="target"]').forEach(i => i.addEventListener("change", () => {
+    updateTarget(); say(val("target") === "phone" ? "Show buttons now use this phone's screen" : "Show buttons now send to the sign");
+  }));
+
+  async function showText(text, spoken, target = val("target")) {
     text = text.trim(); if ($("upper").checked) text = text.toUpperCase();
     if (!text) { say("Type something first.", true); return; }
+    if (target === "phone") { showOnPhone(text, spoken); return; }
     await fontReady;
     const lay = layoutFor(text);
     showPreview(text, lay);
@@ -1003,7 +1089,7 @@ if (typeof module !== "undefined") module.exports = Proto;
     favs.forEach((f, i) => {
       const li = document.createElement("li");
       const show = document.createElement("button"); show.type = "button"; show.className = "primary";
-      show.textContent = `Show ${f}`; show.setAttribute("aria-label", `Show bus ${f}`);
+      show.textContent = `Show ${f}`; show.setAttribute("aria-label", `Show bus ${f}${val("target") === "phone" ? " on this phone" : ""}`);
       show.onclick = () => { $("busNumber").value = f; const t = busText(); showText(t.text, spoken(t.text)); };
       const rm = document.createElement("button"); rm.type = "button"; rm.className = "remove";
       rm.textContent = "Remove"; rm.setAttribute("aria-label", `Remove ${f} from favourites`);
@@ -1011,7 +1097,7 @@ if (typeof module !== "undefined") module.exports = Proto;
       li.append(show, rm); ul.append(li);
     });
   }
-  renderFavs();
+  updateTarget();
 
   /* ---------- wake lock ---------- */
   async function updateWake() {
@@ -1075,7 +1161,7 @@ if (typeof module !== "undefined") module.exports = Proto;
       try { await exclusive(() => send([0x0C, v])); say(msg); } catch (err) { log(err.message); say("Couldn't change the orientation.", true); }
     };
   }
-  $("testBtn").onclick = () => showText("AB1", "the test pattern A B 1");
+  $("testBtn").onclick = () => showText("AB1", "the test pattern A B 1", "sign");
   $("copyLog").onclick = async () => {
     try { await navigator.clipboard.writeText(logLines.join("\n")); say("Log copied"); }
     catch { const r = document.createRange(); r.selectNodeContents($("log")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); say("Log selected. Use Copy from the menu."); }
@@ -1090,7 +1176,8 @@ if (typeof module !== "undefined") module.exports = Proto;
   bluetoothApi(4000).then(bt => {
     if (bt) { $("noBluetooth").hidden = true; log("Bluetooth API found");
       if (bt.getAvailability) bt.getAvailability().then(a => { log("Bluetooth radio available: " + a); if (!a) say("Bluetooth looks switched off on this phone.", true); }).catch(() => {}); }
-    else { $("noBluetooth").hidden = false; log("No Bluetooth API after 4 seconds"); }
+    else { $("noBluetooth").hidden = false; log("No Bluetooth API after 4 seconds");
+      if (!targetChosen) { $("tPhone").checked = true; store.set("target", "phone"); updateTarget(); } }
   });
 
   /* Opening state: preview the first favourite so the page shows what it does. */
