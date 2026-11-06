@@ -306,7 +306,7 @@ body.phone-open { overflow: hidden; }
       <h3>Connection log</h3>
       <div id="log" class="log" tabindex="0" aria-label="Connection log"></div>
       <button type="button" id="copyLog" class="quiet">Copy log</button>
-      <p class="hint">Version 1.20.1</p>
+      <p class="hint">Version 1.20.2</p>
     </div>
   </details>
 
@@ -1029,6 +1029,11 @@ if (typeof module !== "undefined") module.exports = Proto;
     phoneReturn = document.activeElement;
     phoneOpen = true; $("phoneShow").hidden = false; document.querySelector("main").inert = true; document.body.classList.add("phone-open");
     fitPhone();
+    /* Ask for full screen to hide the browser's toolbar. Must happen before any await, while the tap still counts.
+       iPhone browsers often refuse; that's harmless. Bluefy's own menu also has a full-screen option. */
+    const box = $("phoneShow"), fsReq = box.requestFullscreen || box.webkitRequestFullscreen;
+    if (fsReq) { try { Promise.resolve(fsReq.call(box)).then(() => { log("Full screen: on"); refit(); }, e => log(`Full screen refused: ${e && e.name}`)); } catch (e) { log(`Full screen refused: ${e.name}`); } }
+    else log("Full screen: not available in this browser");
     try { if ("wakeLock" in navigator) { phoneWake = await navigator.wakeLock.request("screen"); phoneWake.addEventListener("release", () => { phoneWake = null; }); } } catch { phoneWake = null; }
     const landscape = innerWidth > innerHeight;
     $("phoneShowLabel").textContent = `Showing ${spokenText || text} on this phone's screen, in ${colour.name.toLowerCase()}. Hold the screen towards the driver.${landscape ? "" : " Turn the phone sideways for bigger letters."} Turn your screen brightness up if you can. The Close button is at the bottom.`;
@@ -1039,6 +1044,8 @@ if (typeof module !== "undefined") module.exports = Proto;
     if (!phoneOpen) return;
     phoneOpen = false; $("phoneShow").hidden = true; document.querySelector("main").inert = false; document.body.classList.remove("phone-open");
     if (phoneWake) { phoneWake.release().catch(() => {}); phoneWake = null; }
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement, fsExit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (fsEl && fsExit) { try { Promise.resolve(fsExit.call(document)).catch(() => {}); } catch {} }
     say("Closed the phone display");
     if (phoneReturn && phoneReturn.focus) phoneReturn.focus();
   }
