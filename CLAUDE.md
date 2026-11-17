@@ -18,6 +18,14 @@ A VoiceOver-first web app that drives a Bluetooth LED sign so a blind or low-vis
 - Power: needs a USB-A to C cable. A C-to-C cable gives no power, probably because the CC resistors are missing.
 - The start-up ID display was turned off in the CoolLED1248 app. That setting lives in the sign.
 
+## Battery build (hardware tests)
+
+- Tested Nov 2026: a single 18650 → TP4057 USB-C charger board (B+/B−, protected OUT+/OUT−, battery voltage only) → tiny 0.9–5 V booster (3-pin SOT-89 chip, 22 µH coil) → cut USB-A lead into the panel. It runs the brightest, fullest screen with no flicker or resets, and phone sends work on battery.
+  - The booster gets very hot (just short of too hot to touch), so it's at its limit. Fine for testing, not for the product.
+  - Not yet checked: behaviour with a part-drained cell.
+- Next: an all-in-one 18650 "UPS" board (USB-C charge, 5 V boost, pass-through; 5 V version is R8 = 75 kΩ; holder can be desoldered to save depth). Received, testing next.
+- Decided against on-sign battery status for now (cost at the target price). A clear window or light pipe over the board's charge LEDs instead.
+
 ## Protocol (sources: robot-pizza/led wire_format, zackmcmurrin-dev/coolledux-linux-uploader)
 
 - Service `0000fff0-0000-1000-8000-00805f9b34fb`, characteristic `0000fff1-...` for write without response and notify. **Bluefy rejects the short numeric UUID form, so use the full strings.**
