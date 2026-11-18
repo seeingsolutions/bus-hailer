@@ -23,7 +23,13 @@ A VoiceOver-first web app that drives a Bluetooth LED sign so a blind or low-vis
 - Tested Nov 2026: a single 18650 → TP4057 USB-C charger board (B+/B−, protected OUT+/OUT−, battery voltage only) → tiny 0.9–5 V booster (3-pin SOT-89 chip, 22 µH coil) → cut USB-A lead into the panel. It runs the brightest, fullest screen with no flicker or resets, and phone sends work on battery.
   - The booster gets very hot (just short of too hot to touch), so it's at its limit. Fine for testing, not for the product.
   - Not yet checked: behaviour with a part-drained cell.
-- Next: an all-in-one 18650 "UPS" board (USB-C charge, 5 V boost, pass-through; 5 V version is R8 = 75 kΩ; holder can be desoldered to save depth). Received, testing next.
+- All-in-one 18650 "UPS" board, model JL-1P V2125 (USB-C charge, 5 V boost, pass-through; holder can be desoldered to save depth). Tested Nov 2026:
+  - It's the 5 V version: R8 is marked 7502 (75 kΩ). Its printed spec lists short-circuit, over-voltage and under-voltage protection. Boost parts: 22 µH shielded coil, SS34 (3 A) diodes.
+  - The "UPS output switch" pads came open, and Alexander bridged them. With them bridged, the UPS LED is always on, panel or not, so the boost runs all the time. The finished sign needs a switch here.
+  - The switch pads sit in wide copper next to the coil, so they probably carry the full battery-side current, which is more than the panel draws. That's a guess from the photo, so use a switch rated 2 A or more.
+  - From a full charge it ran the panel for hours (exact time being measured).
+  - When first powered, a couple of rows flickered for about 30 minutes, then settled. Cause unknown. Next test: power the panel from a mains USB charger from cold to see whether the flicker comes from the panel or the battery board.
+  - Charge LEDs: 充电 (charging, red) and 充满 (full), plus UPS (output on), all in a row by the USB-C socket.
 - Decided against on-sign battery status for now (cost at the target price). A clear window or light pipe over the board's charge LEDs instead.
 
 ## Protocol (sources: robot-pizza/led wire_format, zackmcmurrin-dev/coolledux-linux-uploader)
