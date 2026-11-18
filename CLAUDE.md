@@ -30,6 +30,9 @@ A VoiceOver-first web app that drives a Bluetooth LED sign so a blind or low-vis
   - From a full charge it ran the panel for hours (exact time being measured).
   - When first powered, a couple of rows flickered for about 30 minutes, then settled. Cause unknown. Next test: power the panel from a mains USB charger from cold to see whether the flicker comes from the panel or the battery board.
   - Charge LEDs: 充电 (charging, red) and 充满 (full), plus UPS (output on), all in a row by the USB-C socket.
+  - Tested 18 Nov 2026, on a full cell, showing white TEST plus stop sign at high brightness (near worst-case load): rows flickered (video). When the panel was unplugged under load, Q4 (small SOT-23 transistor next to D5 and the switch pads) burnt out. Board retired.
+  - Likely cause (unconfirmed): Q4 sits in the output path and couldn't handle the load. Bridging the "UPS output switch" pads may have left Q4 half-on, or those pads may be meant for a push button rather than a permanent link. Note the TP4057 + tiny booster ran the same kind of screen without flicker, so the boost itself may not be the bottleneck.
+  - Lesson: measure the panel's current before choosing the final board, and don't bridge switch pads without knowing what they switch.
 - Decided against on-sign battery status for now (cost at the target price). A clear window or light pipe over the board's charge LEDs instead.
 
 ## Protocol (sources: robot-pizza/led wire_format, zackmcmurrin-dev/coolledux-linux-uploader)
